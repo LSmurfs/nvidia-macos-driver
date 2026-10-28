@@ -364,7 +364,14 @@ static int nvmtl_skip_empty_on(void) {
     memset(&_c, 0, sizeof(_c));
     part->resources = [(NVMTLResSet *)_resources nvmtlTakeAll]; part->surfaces = [_surfDirty copy];
     // Another process may read an IOSurface once its writer is scheduled, and nothing orders its queue after ours.
-    static int after = -1; if (after < 0) { const char *e = getenv("NVMTL_SCHEDULE_AFTER_SURFACE_WRITES"); after = e && e[0] == '1'; }
+    // Chromium hands each frame's IOSurface to Core Animation from its scheduled handler, about 18 ms before the GPU
+    // finishes a heavy page here, so WindowServer composited half-drawn frames (im.qq.com: video background without the
+    // page over it in ~55% of captured frames). On by default in Chromium-family processes; the variable (also from
+    // nvrm610.conf, since Chrome's sandboxed GPU process gets no environment) still decides when set.
+    static int after = -1; if (after < 0) { const char *e = getenv("NVMTL_SCHEDULE_AFTER_SURFACE_WRITES");
+        after = e ? e[0] == '1' : nvmtl_angle_chrome_family();
+        nvlog("commit: IOSurface writes %s (NVMTL_SCHEDULE_AFTER_SURFACE_WRITES=%s)",
+              after ? "are reported scheduled once the GPU has finished them" : "are reported scheduled at submit", e ? e : "unset"); }
     NVMTLTexture *drawable = _present ? (_present->_parent ?: _present) : nil;
     for (NVMTLTexture *s in part->surfaces) if (after && s != drawable) _scheduleAfterPublish = YES;
     part->scratch = [_scratch copy]; part->signalEvent = event; part->value = value;
