@@ -373,7 +373,12 @@ static int nvmtl_skip_empty_on(void) {
     // NVMTL_SCHEDULE_AFTER_SURFACE_WRITES=3 (default) does it only for two-plane surfaces written through private images (the
     // NV12 surfaces WindowServer draws captured frames into, so it costs nothing without capture), =2 for every private one,
     // =1 for every surface write, =0 for none.
-    static int after = -1; if (after < 0) { const char *e = getenv("NVMTL_SCHEDULE_AFTER_SURFACE_WRITES"); after = e && *e ? e[0] - '0' : 3; }
+    // Chromium-family processes default to =2: Chromium hands each frame's IOSurface to Core Animation from its scheduled
+    // handler, and its IOSurfaces are private images there (nvmtl_vk_surface_share_on), so a heavy page (~20 ms of GPU
+    // work) reached WindowServer half drawn. Chrome's sandboxed GPU process gets no environment; nvrm610.conf can set it.
+    static int after = -1; if (after < 0) { const char *e = getenv("NVMTL_SCHEDULE_AFTER_SURFACE_WRITES");
+        after = e && *e ? e[0] - '0' : nvmtl_angle_chrome_family() ? 2 : 3;
+        nvlog("commit: IOSurface writes reported scheduled once published: mode %d (NVMTL_SCHEDULE_AFTER_SURFACE_WRITES=%s)", after, e ? e : "unset"); }
     NVMTLTexture *drawable = _present ? (_present->_parent ?: _present) : nil;
     for (NVMTLTexture *s in part->surfaces) {
         if (s == drawable || !after) continue;
